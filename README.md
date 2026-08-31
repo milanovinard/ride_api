@@ -57,22 +57,38 @@ python manage.py runserver
 
 ## Authentication
 
-Every endpoint requires a valid JWT **and** a user whose `role` is
-`admin` (`accounts.permissions.IsAdminRole`). This is a domain rule, not
-Django's built-in staff/superuser concept - a `role="rider"` user with
-`is_superuser=True` is still refused.
+Authentication and authorization are two separate gates:
+
+- **Login** (`POST /api/auth/login/`) checks credentials only. **Any** active
+  user - admin, rider or driver - can log in and receive an `access` / `refresh`
+  token pair.
+- **Every business endpoint** requires a valid JWT **and** a user whose `role` is
+  `admin` (`accounts.permissions.IsAdminRole`). A non-admin holds a perfectly
+  valid token but still gets `403` from `/api/rides/`, `/api/users/`, etc. This is
+  a domain rule, not Django's staff/superuser concept - a `role="rider"` user with
+  `is_superuser=True` is still refused.
+
+The access token carries only the user id; `role` is re-read from the database on
+every request, so demoting an admin invalidates their existing token immediately.
+
+| Endpoint | Auth | Purpose |
+|----------|------|---------|
+| `POST /api/auth/login/` | none | `{username, password}` -> `{user, access, refresh}` |
+| `POST /api/auth/refresh/` | none | `{refresh}` -> `{access}` |
+| `GET /api/auth/me/` | any logged-in user | the caller's own profile |
 
 ```bash
-# Obtain a token pair
-curl -X POST http://localhost:8000/api/token/ \
+# Log in (any valid user)
+curl -X POST http://localhost:8000/api/auth/login/ \
   -H "Content-Type: application/json" \
   -d '{"username": "<username>", "password": "<password>"}'
+# -> {"user": {...}, "access": "<access>", "refresh": "<refresh>"}
 
-# Use the access token
+# Call the API (must be an admin-role token, otherwise 403)
 curl http://localhost:8000/api/rides/ -H "Authorization: Bearer <access>"
 
 # Refresh when the access token expires
-curl -X POST http://localhost:8000/api/token/refresh/ \
+curl -X POST http://localhost:8000/api/auth/refresh/ \
   -H "Content-Type: application/json" \
   -d '{"refresh": "<refresh>"}'
 ```
