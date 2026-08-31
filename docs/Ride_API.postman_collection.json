@@ -1,0 +1,890 @@
+{
+  "info": {
+    "name": "Ride API",
+    "_postman_id": "b1d7e9a0-0000-4a00-8a00-r1de4p1c0110",
+    "description": "Functional test collection for the Ride API (Django REST Framework).\n\nAuth model: any active user can POST /api/auth/login/ and receive tokens, but every business endpoint additionally requires role == 'admin' (otherwise 403).\n\nUsage:\n1. Start the API on {{base_url}} and create an admin user (see TESTING.md, Step 0).\n2. Set the collection variables admin_username / admin_password.\n3. Run the collection top-to-bottom (Run collection), or fire requests in order.\n\nEvery request has pm.test assertions, so 'Run collection' is a full functional pass/fail of the API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "admin_username", "value": "admin" },
+    { "key": "admin_password", "value": "admin12345" },
+    { "key": "access_token", "value": "" },
+    { "key": "refresh_token", "value": "" },
+    { "key": "rider_id", "value": "" },
+    { "key": "driver_id", "value": "" },
+    { "key": "rider_username", "value": "" },
+    { "key": "rider_password", "value": "riderpass123" },
+    { "key": "ride_id", "value": "" },
+    { "key": "far_ride_id", "value": "" },
+    { "key": "ride_event_id", "value": "" },
+    { "key": "rider_access_token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('returns user + access + refresh', () => {",
+                  "  pm.expect(json).to.have.property('access');",
+                  "  pm.expect(json).to.have.property('refresh');",
+                  "  pm.expect(json).to.have.property('user');",
+                  "});",
+                  "pm.test('logged-in user is an admin', () => pm.expect(json.user.role).to.eql('admin'));",
+                  "pm.test('password is not in the user payload', () => pm.expect(json.user).to.not.have.property('password'));",
+                  "pm.collectionVariables.set('access_token', json.access);",
+                  "pm.collectionVariables.set('refresh_token', json.refresh);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/auth/login/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{admin_username}}\",\n  \"password\": \"{{admin_password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Me (current user)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('is the admin we logged in as', () => pm.expect(pm.response.json().username).to.eql(pm.collectionVariables.get('admin_username')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/me/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "me", ""]
+            }
+          }
+        },
+        {
+          "name": "Refresh token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('returns a new access token', () => pm.expect(json).to.have.property('access'));",
+                  "pm.collectionVariables.set('access_token', json.access);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/auth/refresh/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "refresh", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Create rider",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('rider_username', 'rider_alice_' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('password is not echoed back', () => pm.expect(json).to.not.have.property('password'));",
+                  "pm.test('role is rider', () => pm.expect(json.role).to.eql('rider'));",
+                  "pm.collectionVariables.set('rider_id', json.id_user);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/users/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{rider_username}}\",\n  \"role\": \"rider\",\n  \"first_name\": \"Alice\",\n  \"last_name\": \"Ng\",\n  \"email\": \"{{rider_username}}@example.com\",\n  \"phone_number\": \"+15551110001\",\n  \"password\": \"{{rider_password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Create driver",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('driver_id', json.id_user);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/users/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"driver_bob_{{$timestamp}}\",\n  \"role\": \"driver\",\n  \"first_name\": \"Bob\",\n  \"last_name\": \"Lee\",\n  \"email\": \"driver_bob_{{$timestamp}}@example.com\",\n  \"phone_number\": \"+15551110002\",\n  \"password\": \"driverpass123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('paginated envelope', () => pm.expect(json).to.include.keys('count', 'next', 'previous', 'results'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/users/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", ""]
+            }
+          }
+        },
+        {
+          "name": "Retrieve rider",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('is the rider we created', () => pm.expect(pm.response.json().id_user).to.eql(Number(pm.collectionVariables.get('rider_id'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/users/{{rider_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "{{rider_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Update rider (PATCH)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('phone_number updated', () => pm.expect(pm.response.json().phone_number).to.eql('+15559990000'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/users/{{rider_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "{{rider_id}}", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone_number\": \"+15559990000\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rides",
+      "item": [
+        {
+          "name": "Create ride (near pickup)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('has id_ride', () => pm.expect(json).to.have.property('id_ride'));",
+                  "pm.test('flat rider/driver ids echoed', () => {",
+                  "  pm.expect(json.id_rider).to.eql(Number(pm.collectionVariables.get('rider_id')));",
+                  "  pm.expect(json.id_driver).to.eql(Number(pm.collectionVariables.get('driver_id')));",
+                  "});",
+                  "pm.collectionVariables.set('ride_id', json.id_ride);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"en-route\",\n  \"id_rider\": {{rider_id}},\n  \"id_driver\": {{driver_id}},\n  \"pickup_latitude\": 40.7128,\n  \"pickup_longitude\": -74.0060,\n  \"dropoff_latitude\": 40.7306,\n  \"dropoff_longitude\": -73.9866,\n  \"pickup_time\": \"2026-09-01T09:00:00Z\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Create ride (far pickup)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('far_ride_id', pm.response.json().id_ride);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"en-route\",\n  \"id_rider\": {{rider_id}},\n  \"id_driver\": {{driver_id}},\n  \"pickup_latitude\": 34.0522,\n  \"pickup_longitude\": -118.2437,\n  \"dropoff_latitude\": 34.10,\n  \"dropoff_longitude\": -118.30,\n  \"pickup_time\": \"2026-09-02T09:00:00Z\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Retrieve ride",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('nested rider + driver + todays_ride_events present', () => {",
+                  "  pm.expect(json).to.have.property('rider');",
+                  "  pm.expect(json).to.have.property('driver');",
+                  "  pm.expect(json).to.have.property('todays_ride_events');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rides/{{ride_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", "{{ride_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Update ride status (PATCH)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('status changed to pickup', () => pm.expect(pm.response.json().status).to.eql('pickup'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/rides/{{ride_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", "{{ride_id}}", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"pickup\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ride Events",
+      "item": [
+        {
+          "name": "Create recent event (< 24h)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('linked to the ride', () => pm.expect(json.id_ride).to.eql(Number(pm.collectionVariables.get('ride_id'))));",
+                  "pm.collectionVariables.set('ride_event_id', json.id_ride_event);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/ride-events/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ride-events", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_ride\": {{ride_id}},\n  \"description\": \"Status changed to pickup\",\n  \"created_at\": \"{{$isoTimestamp}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Create old event (> 24h)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/ride-events/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ride-events", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_ride\": {{ride_id}},\n  \"description\": \"Status changed to dropoff\",\n  \"created_at\": \"2026-07-01T09:00:00Z\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List ride events",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('paginated envelope', () => pm.expect(pm.response.json()).to.include.keys('count', 'results'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ride-events/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ride-events", ""]
+            }
+          }
+        },
+        {
+          "name": "Retrieve ride event",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ride-events/{{ride_event_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ride-events", "{{ride_event_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Update ride event (PATCH)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/ride-events/{{ride_event_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ride-events", "{{ride_event_id}}", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Status changed to pickup (corrected)\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ride List API",
+      "item": [
+        {
+          "name": "List rides (default)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('paginated envelope', () => pm.expect(json).to.include.keys('count', 'next', 'previous', 'results'));",
+                  "pm.test('each ride has nested rider/driver + todays_ride_events', () => {",
+                  "  json.results.forEach(r => {",
+                  "    pm.expect(r).to.have.property('rider');",
+                  "    pm.expect(r).to.have.property('todays_ride_events');",
+                  "  });",
+                  "});",
+                  "pm.test('todays_ride_events only holds events from the last 24h', () => {",
+                  "  const now = Date.now();",
+                  "  json.results.forEach(r => r.todays_ride_events.forEach(e => {",
+                  "    pm.expect(now - new Date(e.created_at).getTime()).to.be.below(24 * 3600 * 1000 + 60000);",
+                  "  }));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rides/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", ""]
+            }
+          }
+        },
+        {
+          "name": "List rides (pagination)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('page_size honoured', () => pm.expect(json.results.length).to.be.at.most(5));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?page=1&page_size=5",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", ""],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "5" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Filter by status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('every result matches the status filter', () => {",
+                  "  pm.response.json().results.forEach(r => pm.expect(r.status).to.eql('en-route'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?status=en-route",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", ""],
+              "query": [{ "key": "status", "value": "en-route" }]
+            }
+          }
+        },
+        {
+          "name": "Filter by rider email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const email = pm.collectionVariables.get('rider_username') + '@example.com';",
+                  "pm.test('every result belongs to that rider', () => {",
+                  "  pm.response.json().results.forEach(r => pm.expect(r.rider.email.toLowerCase()).to.eql(email.toLowerCase()));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?rider_email={{rider_username}}@example.com",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", ""],
+              "query": [{ "key": "rider_email", "value": "{{rider_username}}@example.com" }]
+            }
+          }
+        },
+        {
+          "name": "Sort by -pickup_time",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const times = pm.response.json().results.map(r => new Date(r.pickup_time).getTime());",
+                  "pm.test('descending by pickup_time', () => {",
+                  "  for (let i = 1; i < times.length; i++) pm.expect(times[i]).to.be.at.most(times[i - 1]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?ordering=-pickup_time",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", ""],
+              "query": [{ "key": "ordering", "value": "-pickup_time" }]
+            }
+          }
+        },
+        {
+          "name": "Sort by distance (nearest first)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('distance_km is present when sorting by distance', () => {",
+                  "  pm.expect(json.results[0]).to.have.property('distance_km');",
+                  "});",
+                  "pm.test('ascending by distance_km', () => {",
+                  "  const d = json.results.map(r => r.distance_km);",
+                  "  for (let i = 1; i < d.length; i++) pm.expect(d[i]).to.be.at.least(d[i - 1]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?ordering=distance&latitude=40.7128&longitude=-74.0060",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", ""],
+              "query": [
+                { "key": "ordering", "value": "distance" },
+                { "key": "latitude", "value": "40.7128" },
+                { "key": "longitude", "value": "-74.0060" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sort by distance without coordinates (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('error is keyed on ordering', () => pm.expect(pm.response.text()).to.include('ordering'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?ordering=distance",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", ""],
+              "query": [{ "key": "ordering", "value": "distance" }]
+            }
+          }
+        },
+        {
+          "name": "Unknown ordering value (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?ordering=not_a_field",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", ""],
+              "query": [{ "key": "ordering", "value": "not_a_field" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth failure cases",
+      "item": [
+        {
+          "name": "No token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rides/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", ""]
+            }
+          }
+        },
+        {
+          "name": "Malformed token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "abc.def.ghi", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rides/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", ""]
+            }
+          }
+        },
+        {
+          "name": "Login (rider) - any user may log in",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK - a non-admin can still authenticate', () => pm.response.to.have.status(200));",
+                  "pm.test('role is rider', () => pm.expect(pm.response.json().user.role).to.eql('rider'));",
+                  "pm.collectionVariables.set('rider_access_token', pm.response.json().access);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/auth/login/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{rider_username}}\",\n  \"password\": \"{{rider_password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Valid token, non-admin role (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{rider_access_token}}", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rides/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", ""]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
