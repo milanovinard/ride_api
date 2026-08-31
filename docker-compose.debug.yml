@@ -1,0 +1,19 @@
+# Debug override for the "web" container. Use it alongside the base file:
+#
+#     docker compose -f docker-compose.yml -f docker-compose.debug.yml up
+#
+# It starts the server under debugpy, listening on :5678, and waits for VS Code
+# to attach ("Attach: Docker web (debugpy :5678)" in .vscode/launch.json) before
+# executing any code - so breakpoints hit even during startup.
+#
+# debugpy is installed at container start to avoid changing the image; for a
+# permanent setup add `debugpy>=1.8` to requirements-dev.txt instead.
+
+services:
+  web:
+    command: >
+      sh -c "pip install --quiet debugpy &&
+             python -m debugpy --listen 0.0.0.0:5678 --wait-for-client
+             manage.py runserver 0.0.0.0:8000 --noreload"
+    ports:
+      - "5678:5678"
