@@ -885,6 +885,69 @@
           }
         }
       ]
+    },
+    {
+      "name": "Bonus report",
+      "description": "Inspect the data seeded by `python manage.py seed_bonus_data`. The raw report query is SQL, not HTTP - run it with that command (it seeds and verifies) or via psql; see TESTING.md Part 3.",
+      "item": [
+        {
+          "name": "Seeded rides (bonus_rider)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('14 rides were seeded', () => pm.expect(pm.response.json().count).to.eql(14));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/rides/?rider_email=bonus_rider@example.com&page_size=50",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rides", ""],
+              "query": [
+                { "key": "rider_email", "value": "bonus_rider@example.com" },
+                { "key": "page_size", "value": "50" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Seeded ride events",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const kinds = new Set(pm.response.json().results.map(e => e.description));",
+                  "pm.test('pickup and dropoff events are present', () => {",
+                  "  pm.expect(kinds).to.include('Status changed to pickup');",
+                  "  pm.expect(kinds).to.include('Status changed to dropoff');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ride-events/?page_size=100",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ride-events", ""],
+              "query": [{ "key": "page_size", "value": "100" }]
+            }
+          }
+        }
+      ]
     }
   ]
 }
