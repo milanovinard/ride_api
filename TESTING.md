@@ -389,3 +389,71 @@ create steps make fresh records each time (unique `username`/`email` use a
 valid token. **Every other endpoint** requires a JWT (`Authorization: Bearer
 <access>`) **and** caller `role == "admin"`; otherwise `401` (no/invalid token) or
 `403` (valid token, wrong role).
+
+---
+
+## Part 3 – Verifying the bonus SQL report
+
+Postman speaks HTTP, not SQL, so the raw report query is checked with a
+management command that seeds a deterministic dataset **and** runs the exact SQL
+from the README against it.
+
+### 3.1 Run it
+
+```bash
+docker compose exec web python manage.py seed_bonus_data
+```
+
+(Local, no Docker: `python manage.py seed_bonus_data`.)
+
+Output:
+
+```
+Seeded 14 rides and 28 ride events (rider: Rita Ortiz; drivers: Chris Hunt, Howard Young, Randy West).
+
+Bonus report - trips over 1 hour, by month and driver
+----------------------------------------------------
+month     driver      count_of_trips_over_1hr
+2024-01   Chris H     2
+2024-01   Howard Y    3
+2024-01   Randy W     1
+2024-02   Chris H     1
+2024-02   Randy W     2
+2024-03   Howard Y    1
+2024-04   Randy W     1
+
+Matches the expected result - bonus SQL verified.
+```
+
+Re-running is safe — it deletes the rides it seeded before and recreates them.
+`--sql` re-runs the query only; `--reset` removes the seeded data.
+
+### 3.2 What the dataset proves
+
+| Case in the data | What it checks |
+|------------------|----------------|
+| Trips of 61–240 min | counted |
+| A 30-minute trip | excluded |
+| An **exactly 60-minute** trip | excluded — the query is `> INTERVAL '1 hour'`, not `>=` |
+| A trip with **two** `'Status changed to pickup'` events | still counts **once** — the CTE takes `MIN(created_at)` and groups by ride |
+| A trip with a pickup but **no dropoff** event | excluded by the inner join |
+| Rides spread across 2024-01 … 2024-04 and three drivers | `GROUP BY month, driver` |
+
+### 3.3 Run the SQL yourself
+
+```bash
+docker compose exec db psql -U ride_api -d ride_api
+```
+
+Paste the query from `README.md` → "Bonus - SQL". (Or `python manage.py dbshell`.)
+
+### 3.4 See the seeded data in Postman
+
+The seeded rides and events are ordinary rows, visible through the API:
+
+- `GET {{base_url}}/api/rides/?rider_email=bonus_rider@example.com&page_size=50` — the 14 rides.
+- `GET {{base_url}}/api/ride-events/?page_size=100` — the pickup/dropoff events.
+
+The *Bonus report* folder in the Postman collection has both requests.
+(`todays_ride_events` on these rides is empty — the events are dated 2024, well
+outside the 24-hour window, which is correct.)
